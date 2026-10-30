@@ -28,6 +28,17 @@ See [`server/README.md`](server/README.md) for Discord application setup. Start 
 
 For Activity development, copy the root `.env.example` to `.env`, set `VITE_DISCORD_CLIENT_ID` to the same Discord application ID as the server, and configure the Discord Developer Portal Activity URL Mapping to the deployed client URL. On Netlify, set `VITE_API_URL` to the public HTTPS URL of the deployed `server/` service before rebuilding. The web client automatically uses the Embedded App SDK only when it is running inside a Discord iframe.
 
+## Render server deployment
+
+The repository includes [`render.yaml`](render.yaml) as a Render Blueprint for the realtime API. In Render, create a new Blueprint from this repository and use the generated `storyfuse-api` web service. Render will build from `server/`, start `npm start`, and check `/health`. After the first deploy, copy the Render service URL into `PUBLIC_ORIGIN` and set `DISCORD_REDIRECT_URI` to `<render-url>/auth/discord/callback`.
+
+Then set these Netlify environment variables and redeploy the frontend:
+
+```text
+VITE_API_URL=<render-url>
+VITE_DISCORD_CLIENT_ID=1565804224019955742
+```
+
 Build verification:
 
 ```text
