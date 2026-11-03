@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { authenticateDiscordActivity, isDiscordActivity } from './discordActivity';
+import { authenticateDiscordActivity, getApiBase, isDiscordActivity } from './discordActivity';
 
 type User={id:string;username:string;avatar:string|null};
 type RoomState={id:string;code:string;title:string;visibility:'public'|'private';phase:string;round:number;maxRounds:number;deadline:number|null;openingLine:string;members:{id:string;username:string;role:'player'|'spectator';host:boolean;avatar:string|null}[];entries:{id:string;number:number;text:string;votes:number;winning:boolean;author?:{id:string;username:string}}[];story:{id:string;text:string;winning:boolean;author?:{id:string;username:string}}[];standings?:{id:string;username:string;points:number}[];myVote:string|null;submitted:boolean;voteCount:number};
-const API=import.meta.env.VITE_API_URL||'http://localhost:3001';
+const API=getApiBase();
 export default function DiscordLobby(){
  const [user,setUser]=useState<User|null>(null);const [activitySession,setActivitySession]=useState<string|null>(null);const [socket,setSocket]=useState<Socket|null>(null);const [room,setRoom]=useState<RoomState|null>(null);const [rooms,setRooms]=useState<{id:string;title:string;code:string;phase:string;players:number}[]>([]);const [code,setCode]=useState('');const [title,setTitle]=useState('A StoryFuse story');const [visibility,setVisibility]=useState<'public'|'private'>('public');const [role,setRole]=useState<'player'|'spectator'>('player');const [sentence,setSentence]=useState('');const [notice,setNotice]=useState('Sign in with Discord to create or join a live room.');
  useEffect(()=>{
   const loadUser=async()=>{
    try {
     const activityUser=await authenticateDiscordActivity();
-    if(activityUser){setUser({id:activityUser.user.id,username:activityUser.user.global_name||activityUser.user.username,avatar:activityUser.user.avatar?`https://cdn.discordapp.com/avatars/${activityUser.user.id}/${activityUser.user.avatar}.png`:null});setActivitySession(activityUser.sessionToken);return;}
+    if(activityUser){setUser({id:activityUser.user.id,username:activityUser.user.global_name||activityUser.user.username,avatar:activityUser.user.avatar?`https://cdn.discordapp.com/avatars/${activityUser.user.id}/${activityUser.user.avatar}.png`:null});setActivitySession(activityUser.sessionToken);setNotice('');return;}
    } catch(e) { setNotice(e instanceof Error?e.message:'Discord Activity authentication failed.'); if(isDiscordActivity()) return; }
    fetch(`${API}/api/me`,{credentials:'include'}).then(r=>r.ok?r.json():null).then(setUser).catch(()=>setUser(null));
   };
   loadUser();
   fetch(`${API}/api/rooms`).then(r=>r.json()).then(d=>setRooms(d.rooms||[])).catch(()=>{});
  },[]);
- useEffect(()=>{if(!user)return;const s=io(API,{withCredentials:true,auth:activitySession?{sessionToken:activitySession}:undefined});setSocket(s);s.on('room:state',(r:RoomState)=>setRoom(r));s.on('room:notice',(m:string)=>setNotice(m));s.on('rooms:changed',()=>fetch(`${API}/api/rooms`).then(r=>r.json()).then(d=>setRooms(d.rooms||[])));s.on('connect_error',e=>setNotice(e.message));return()=>{s.disconnect();setSocket(null);};},[user,activitySession]);
+ useEffect(()=>{if(!user)return;const s=io(API||window.location.origin,{withCredentials:true,transports:isDiscordActivity()?['polling']:['polling','websocket'],auth:activitySession?{sessionToken:activitySession}:undefined});setSocket(s);s.on('room:state',(r:RoomState)=>setRoom(r));s.on('room:notice',(m:string)=>setNotice(m));s.on('rooms:changed',()=>fetch(`${API}/api/rooms`).then(r=>r.json()).then(d=>setRooms(d.rooms||[])));s.on('connect_error',e=>setNotice(e.message));return()=>{s.disconnect();setSocket(null);};},[user,activitySession]);
  const me=useMemo(()=>room?.members.find(m=>m.id===user?.id),[room,user]);
  function act(event:string,data:object){if(!socket){setNotice('Connect to the live server first.');return;}socket.emit(event,data,(r:{ok:boolean;error?:string;room?:RoomState})=>{if(!r?.ok){setNotice(r?.error||'Action failed.');return;}if(r.room)setRoom(r.room);setNotice('');});}
  function create(){act('room:create',{visibility,title,seconds:60});}

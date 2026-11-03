@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     rootDir: server
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     envVars:
@@ -13,7 +13,7 @@ services:
       - key: CLIENT_ORIGIN
         value: https://jocular-chimera-c7d695.netlify.app
       - key: PUBLIC_ORIGIN
-        sync: false
+        value: https://storyfuse-api.onrender.com
       - key: DISCORD_CLIENT_ID
         value: "1565804224019955742"
       - key: DISCORD_CLIENT_SECRET
@@ -21,7 +21,7 @@ services:
       - key: DISCORD_PUBLIC_KEY
         value: be14578d3371fe3061fbf6ccfa7631863bdec2232b49cf93c3747495b8ecb8c0
       - key: DISCORD_REDIRECT_URI
-        sync: false
+        value: https://storyfuse-api.onrender.com/auth/discord/callback
       - key: SESSION_SECRET
         generateValue: true
       - key: COOKIE_SECURE

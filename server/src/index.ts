@@ -15,9 +15,10 @@ type Room = { id: string; code: string; title: string; visibility: 'public'|'pri
 
 const app = express();
 const http = createServer(app);
-const origin = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
-const io = new Server(http, { cors: { origin, credentials: true } });
-app.use(cors({ origin, credentials: true }));
+const origin = (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').replace(/\/+$/, '');
+const corsOptions = { origin: true, credentials: true };
+const io = new Server(http, { cors: corsOptions });
+app.use(cors(corsOptions));
 app.use(express.json({verify:(req,_res,buf)=>{(req as express.Request & {rawBody?:Buffer}).rawBody=Buffer.from(buf);}}));
 const isProduction = process.env.NODE_ENV === 'production';
 const secret = process.env.SESSION_SECRET ?? 'development-only-change-this-secret';
@@ -111,11 +112,15 @@ app.post('/api/token',async(req,res)=>{
   const code=String(req.body?.code??'');
   const clientId=process.env.DISCORD_CLIENT_ID;
   const clientSecret=process.env.DISCORD_CLIENT_SECRET;
-  if(!clientId||!clientSecret||!code)return res.status(400).json({error:'A Discord authorization code is required.'});
+  if(!clientId||!clientSecret)return res.status(503).json({error:'Server is missing DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET in Render Environment Variables.'});
+  if(!code)return res.status(400).json({error:'A Discord authorization code is required.'});
   try {
     const body=new URLSearchParams({client_id:clientId,client_secret:clientSecret,grant_type:'authorization_code',code});
     const tokenRes=await fetch('https://discord.com/api/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-    if(!tokenRes.ok)return res.status(502).json({error:'Discord authorization code exchange failed.'});
+    if(!tokenRes.ok){
+      const errText=await tokenRes.text().catch(()=>'');
+      return res.status(502).json({error:`Discord token exchange failed (${tokenRes.status}): ${errText}`});
+    }
     const token=await tokenRes.json() as {access_token?:string};
     if(!token.access_token)return res.status(502).json({error:'Discord did not return an access token.'});
     const userRes=await fetch('https://discord.com/api/users/@me',{headers:{Authorization:`Bearer ${token.access_token}`}});

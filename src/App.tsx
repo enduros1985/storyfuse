@@ -39,6 +39,7 @@ export default function App() {
       return;
     }
     update(s => ({ ...s, phase: "writing", story: [], currentSubmissions: [], currentVotes: {}, rounds: [], roundNumber: 1, notice: "Round 1 is open. Each player may submit one sentence." }));
+    setTimeout(() => document.getElementById("local-demo-game")?.scrollIntoView({ behavior: "smooth" }), 50);
   }
 
   function submit() {
@@ -81,7 +82,7 @@ export default function App() {
 
       {showRules && <section className="panel rules"><div className="panel-title"><div><span className="eyebrow">HOW TO PLAY</span><h2>Classic rules</h2></div><button className="icon-btn" onClick={() => setShowRules(false)}>×</button></div><div className="rule-grid"><div><b>01 / WRITE</b><p>Every player submits one sentence per round. Submissions stay anonymous.</p></div><div><b>02 / VOTE</b><p>Players and spectators each get one vote. Players cannot vote for themselves.</p></div><div><b>03 / ADVANCE</b><p>The highest-voted sentence advances. Ties advance all tied sentences.</p></div><div><b>04 / REVEAL</b><p>At the end, every sentence is highlighted with its author's name and winning entries.</p></div></div></section>}
 
-      <section className="game-layout">
+      <section className="game-layout" id="local-demo-game">
         <div className="main-column">
           <section className="panel">
             <div className="panel-title"><div><span className="eyebrow">GAME ROOM / LOCAL DEMO</span><h2>{game.title}</h2></div><span className={`phase phase-${game.phase}`}>{game.phase.toUpperCase()}</span></div>
