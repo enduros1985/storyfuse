@@ -1,0 +1,43 @@
+import { useEffect, useMemo, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { authenticateDiscordActivity, isDiscordActivity } from './discordActivity';
+
+type User={id:string;username:string;avatar:string|null};
+type RoomState={id:string;code:string;title:string;visibility:'public'|'private';phase:string;round:number;maxRounds:number;deadline:number|null;openingLine:string;members:{id:string;username:string;role:'player'|'spectator';host:boolean;avatar:string|null}[];entries:{id:string;number:number;text:string;votes:number;winning:boolean;author?:{id:string;username:string}}[];story:{id:string;text:string;winning:boolean;author?:{id:string;username:string}}[];standings?:{id:string;username:string;points:number}[];myVote:string|null;submitted:boolean;voteCount:number};
+const API=import.meta.env.VITE_API_URL||'http://localhost:3001';
+export default function DiscordLobby(){
+ const [user,setUser]=useState<User|null>(null);const [activitySession,setActivitySession]=useState<string|null>(null);const [socket,setSocket]=useState<Socket|null>(null);const [room,setRoom]=useState<RoomState|null>(null);const [rooms,setRooms]=useState<{id:string;title:string;code:string;phase:string;players:number}[]>([]);const [code,setCode]=useState('');const [title,setTitle]=useState('A StoryFuse story');const [visibility,setVisibility]=useState<'public'|'private'>('public');const [role,setRole]=useState<'player'|'spectator'>('player');const [sentence,setSentence]=useState('');const [notice,setNotice]=useState('Sign in with Discord to create or join a live room.');
+ useEffect(()=>{
+  const loadUser=async()=>{
+   try {
+    const activityUser=await authenticateDiscordActivity();
+    if(activityUser){setUser({id:activityUser.user.id,username:activityUser.user.global_name||activityUser.user.username,avatar:activityUser.user.avatar?`https://cdn.discordapp.com/avatars/${activityUser.user.id}/${activityUser.user.avatar}.png`:null});setActivitySession(activityUser.sessionToken);return;}
+   } catch(e) { setNotice(e instanceof Error?e.message:'Discord Activity authentication failed.'); if(isDiscordActivity()) return; }
+   fetch(`${API}/api/me`,{credentials:'include'}).then(r=>r.ok?r.json():null).then(setUser).catch(()=>setUser(null));
+  };
+  loadUser();
+  fetch(`${API}/api/rooms`).then(r=>r.json()).then(d=>setRooms(d.rooms||[])).catch(()=>{});
+ },[]);
+ useEffect(()=>{if(!user)return;const s=io(API,{withCredentials:true,auth:activitySession?{sessionToken:activitySession}:undefined});setSocket(s);s.on('room:state',(r:RoomState)=>setRoom(r));s.on('room:notice',(m:string)=>setNotice(m));s.on('rooms:changed',()=>fetch(`${API}/api/rooms`).then(r=>r.json()).then(d=>setRooms(d.rooms||[])));s.on('connect_error',e=>setNotice(e.message));return()=>{s.disconnect();setSocket(null);};},[user,activitySession]);
+ const me=useMemo(()=>room?.members.find(m=>m.id===user?.id),[room,user]);
+ function act(event:string,data:object){if(!socket){setNotice('Connect to the live server first.');return;}socket.emit(event,data,(r:{ok:boolean;error?:string;room?:RoomState})=>{if(!r?.ok){setNotice(r?.error||'Action failed.');return;}if(r.room)setRoom(r.room);setNotice('');});}
+ function create(){act('room:create',{visibility,title,seconds:60});}
+ function join(id?:string,joinCode?:string){act('room:join',{roomId:id,code:joinCode,role});}
+ return <section className="panel" style={{marginBottom:24}}>
+  <div className="panel-title"><div><span className="eyebrow">DISCORD-FIRST / LIVE MULTIPLAYER</span><h2>Play with your server</h2></div><span className="phase phase-writing">0.3 BETA</span></div>
+  {!user?<><p className="hint">Discord is the only account provider. Your Discord ID identifies your player account; your display name appears in the lobby and after the final reveal.</p><button onClick={()=>isDiscordActivity()?window.location.reload():window.location.href=`${API}/auth/discord`}>{isDiscordActivity()?'Retry Discord connection':'Continue with Discord'} ↗</button></>:<>
+   <div className="participant" style={{marginBottom:14}}><span className="avatar">{user.username.slice(0,1).toUpperCase()}</span><span className="person-name">{user.username}</span><span className="role role-player">DISCORD CONNECTED</span><button className="ghost" onClick={()=>fetch(`${API}/auth/logout`,{method:'POST',credentials:'include'}).then(()=>location.reload())}>Sign out</button></div>
+   {!room?<><div className="rule-grid"><div><b>CREATE A ROOM</b><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Room title"/><select className="full-select" value={visibility} onChange={e=>setVisibility(e.target.value as 'public'|'private')}><option value="public">Public room</option><option value="private">Private room</option></select><button onClick={create}>Create room</button></div><div><b>JOIN BY CODE</b><input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="6-character room code" maxLength={6}/><select className="full-select" value={role} onChange={e=>setRole(e.target.value as 'player'|'spectator')}><option value="player">Join as player</option><option value="spectator">Join as spectator</option></select><button className="secondary" onClick={()=>join(undefined,code)}>Join private room</button></div></div><div style={{marginTop:18}}><span className="eyebrow">PUBLIC ROOMS</span>{rooms.length?rooms.map(r=><div className="participant" key={r.id}><span className="person-name">{r.title}</span><span className="role">{r.phase}</span><span className="count">{r.players} players</span><button onClick={()=>join(r.id)}>Join</button></div>):<p className="hint">No public rooms are open yet. Create one to get started.</p>}</div></>:<>
+    <div className="panel-title"><div><span className="eyebrow">{room.visibility.toUpperCase()} ROOM · CODE {room.code}</span><h2>{room.title}</h2></div><span className={`phase phase-${room.phase}`}>{room.phase.toUpperCase()}</span></div>
+    <p className="hint">Round {room.round} of {room.maxRounds} · {room.members.length} members · You are {me?.role||role}</p><div className="participant-list">{room.members.map(m=><div className="participant" key={m.id}><span className="avatar">{m.username.slice(0,1).toUpperCase()}</span><span className="person-name">{m.username}</span><span className="role">{m.role}{m.host?' · HOST':''}</span></div>)}</div>
+    {room.phase==='lobby'&&me?.host&&<button onClick={()=>act('game:start',{roomId:room.id})}>Start 8-round game</button>}
+    {room.phase==='writing'&&<><p>{room.openingLine}</p>{me?.role==='player'&&!room.submitted?<><textarea value={sentence} onChange={e=>setSentence(e.target.value)} placeholder="Write one sentence (max 220 characters)…" maxLength={220}/><button onClick={()=>{act('submission:create',{roomId:room.id,text:sentence});setSentence('');}}>Submit anonymously</button></>:<p className="hint">{me?.role==='spectator'?'Spectators can vote but cannot submit.': 'Your sentence is submitted for this round.'}</p>}{me?.host&&<button className="secondary" onClick={()=>act('host:close-writing',{roomId:room.id})}>Close writing / open voting</button>}</>}
+    {room.phase==='voting'&&<><p>Choose your favourite sentence. Authors remain hidden.</p>{room.entries.map(e=><div className="participant" key={e.id}><span className="person-name">#{e.number} · {e.text}</span><button disabled={!!room.myVote||(me?.role==='player'&&room.entries.find(x=>x.id===e.id)?.author?.id===user?.id)} onClick={()=>act('vote:create',{roomId:room.id,entryId:e.id})}>{room.myVote===e.id?'Voted':'Vote'}</button></div>)}{me?.host&&<button className="secondary" onClick={()=>act('host:close-voting',{roomId:room.id})}>Close voting</button>}</>}
+    {room.phase==='results'&&<><p>Round results</p>{room.entries.map(e=><div className="participant" key={e.id}><span className="person-name">{e.winning?'★ ':''}{e.text}</span><span className="count">{e.votes} votes</span></div>)}{me?.host&&<button onClick={()=>act('host:next-round',{roomId:room.id})}>{room.round===room.maxRounds?'Reveal final story':'Start next round'}</button>}</>}
+    {room.phase==='finished'&&<><span className="eyebrow">THE STORY / AUTHORS REVEALED</span>{room.story.map((e,i)=><p key={e.id} className="story-line">{i+1}. {e.text} <strong>— {e.author?.username||'Former member'}</strong></p>)}<h3>Final standings</h3>{(room.standings||[]).map((p,i)=><div className="participant" key={p.id}><span className="person-name">{i+1}. {p.username}</span><span className="count">{p.points} points</span></div>)}</>}
+    <button className="ghost" onClick={()=>{socket?.emit('room:leave',{roomId:room.id});setRoom(null);}}>Leave room</button>
+   </>}
+  </>}
+  {notice&&<p className="hint" role="status">{notice}</p>}
+ </section>;
+}

@@ -1,0 +1,8 @@
+-- PostgreSQL production schema. The 0.3 realtime demo keeps rooms in memory;
+-- this schema is the persistence target before public launch.
+CREATE TABLE users (discord_id TEXT PRIMARY KEY, username TEXT NOT NULL, avatar_url TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE rooms (id UUID PRIMARY KEY, code TEXT UNIQUE NOT NULL, title TEXT NOT NULL, visibility TEXT NOT NULL CHECK (visibility IN ('public','private')), host_discord_id TEXT NOT NULL REFERENCES users(discord_id), status TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ);
+CREATE TABLE room_members (room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE, discord_id TEXT NOT NULL REFERENCES users(discord_id), role TEXT NOT NULL CHECK (role IN ('player','spectator')), joined_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(room_id,discord_id));
+CREATE TABLE rounds (id UUID PRIMARY KEY, room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE, round_number INT NOT NULL, phase TEXT NOT NULL, deadline TIMESTAMPTZ, UNIQUE(room_id,round_number));
+CREATE TABLE submissions (id UUID PRIMARY KEY, round_id UUID NOT NULL REFERENCES rounds(id) ON DELETE CASCADE, author_discord_id TEXT NOT NULL REFERENCES users(discord_id), body VARCHAR(220) NOT NULL, is_winner BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(round_id,author_discord_id));
+CREATE TABLE votes (round_id UUID NOT NULL REFERENCES rounds(id) ON DELETE CASCADE, voter_discord_id TEXT NOT NULL REFERENCES users(discord_id), submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(round_id,voter_discord_id));
